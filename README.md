@@ -8,13 +8,15 @@ You may be wondering "what is authoritative DNS?" and "what is fly.io and why wo
 
 ### What is authoritative DNS?
 
-The Domain Name System (DNS) is a distributed system of servers which store mappings from names to IP addresses. Some of these servers store the "source truth" for a name to IP mapping, these are called authoritative nameservers. Other servers answer client's requests by finding the right authoritative nameservers to speak to and get the correct answers, these are called resolvers. You may be familiar with the Google and Cloudflare resolvers which have the IPs 8.8.8.8 and 1.1.1.1 respectively.
+The Domain Name System (DNS) is a distributed system of servers which store mappings from names to IP addresses. Some of these servers store the "source truth" for a name to IP mapping, these are called authoritative nameservers. Other servers answer client's requests by finding the right authoritative nameservers to speak to and get the correct answers, these are called resolvers. You may be familiar with the Google and Cloudflare resolvers which have the IPs 8.8.8.8 and 1.1.1.1 respectively. Cloudflare has good [documentation](https://www.cloudflare.com/learning/dns/dns-server-types/#recursive-resolver) on DNS server types which goes a little bit more in-depth.
 
 ### Why fly.io?
 
-A good authoritative DNS server responds quickly to requests [why?]. For global services this means 1) having servers physically close to clients all around the world and 2) setting up complex infrastructure like anycast [anycast](https://fly.io/docs/reference/architecture/#bgp-anycast) (which allows servers all around the world to use the same IP address). This is both expensive and technically hard to achieve for a single person. Fly.io bakes this functionality into their platform, and why it's such a good fit for a service like DNS [additional reasons?].
+A good authoritative DNS server responds quickly to requests [TODO: why?]. For global services this means 1) having servers physically close to clients all around the world and 2) setting up complex infrastructure like anycast [anycast](https://fly.io/docs/reference/architecture/#bgp-anycast) which allows physical servers all around the world to share the same IP address. This is both expensive and technically hard to do. With fly.io this functionality is baked right in, which is why it's such a good fit for a service like DNS.
 
 ## Overview
+
+TODO: brief overview of what we're going to configure?
 
 We will go through configuration for:
 
@@ -33,6 +35,8 @@ DNS was designed with redundancy in mind, and as such it's a requirement to prov
 ## Fly.io
 
 We will configure one app to provide our DNS service which we call `fly-coredns` for this example.
+
+TODO: this section with `flyctl launch` doesn't work as I thought it would.
 
 With the following command, we can create and register the app with fly.io's platform based on the `fly.toml` configuration file in this directory:
 
@@ -138,7 +142,7 @@ ns1	IN	A	213.188.208.61
 ns2	IN	A	213.188.209.159
 ```
 
-This is a bare-bones zone file which simply configures the start of authority (SOA) for the zone, and nameserver (NS) and associated address (A) records for the zone. 
+This is a bare-bones zone file which simply configures the start of authority (SOA) for the zone, and nameserver (NS) and associated address (A) records for the zone, which we have configured with the IPs that we generated above. 
 
 ## Fly.io deployment
 
@@ -357,7 +361,7 @@ The name-to-IP mapping associated with the glue record is returned in the `ADDIT
 
 ## Global distribution
 
-You may have noticed that when we ran `flyctl launch`, we saw the following output [did we really? verify?]: `App will initially deploy to ewr (Secaucus, NJ (US)) region`. While this is nice, what about the globally-distributedness that we were promised? Let's make our app distributed and run all around the world.
+You may have noticed that when we ran `flyctl launch`, we saw the following output [TODO: did we really? verify?]: `App will initially deploy to ewr (Secaucus, NJ (US)) region`. While this is nice, what about the globally-distributedness that we were promised? Let's make our app distributed and run all around the world.
 
 With `flyctl platform regions` we can get an inventory of the available locations that our could run app in:
 
