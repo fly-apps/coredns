@@ -106,7 +106,7 @@ ns2.example.com  213.188.209.159
 
 ## CoreDNS
 
-CoreDNS is quite simple to get set up. While it offers a number of methods to configure the DNS records themselves, we will use the simplest approach: a "traditional" DNS zone file. In ttoal we will require two configuration files: the first is the `Corefile`, a config for CoreDNS itself, the second is the DNS zone file.
+While CoreDNS offers a number of methods to configure the DNS records that it will server, we will use the simplest approach: a "traditional" DNS [zone file](https://en.wikipedia.org/wiki/Zone_file). We will require two configuration files: the first is the `Corefile`, a config for CoreDNS itself, the second is the DNS zone file.
 
 The `Corefile` contains the following entry:
 
@@ -265,7 +265,7 @@ We also see the following entry in the logs, indicating that our fly DNS service
 If the glue records have been correctly configured then we should be able to get the A record for `ns1.example.com` with `dig ns1.example.com`
 
 ```
-> dig ns1.pinto.app
+> dig ns1.example.com
 
 ; <<>> DiG 9.10.6 <<>> ns1.example.com
 ;; global options: +cmd
@@ -352,6 +352,8 @@ ns2.example.com.		3600	IN	A	213.188.209.159
 ;; WHEN: Sun May 23 23:58:09 CEST 2021
 ;; MSG SIZE  rcvd: 287
 ```
+
+The name-to-IP mapping associated with the glue record is returned in the `ADDITIONAL SECTION` by the TLD nameserver, these are not authoritative answers which the nameserver is providing, but additional information.
 
 ## Global distribution
 
