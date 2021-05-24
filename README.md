@@ -12,15 +12,17 @@ The Domain Name System (DNS) is a distributed system of servers which store mapp
 
 ### Why fly.io?
 
-A good authoritative DNS server responds quickly to requests [TODO: why?]. For global services this means 1) having servers physically close to clients all around the world and 2) setting up complex infrastructure like anycast [anycast](https://fly.io/docs/reference/architecture/#bgp-anycast) which allows physical servers all around the world to share the same IP address. This is both expensive and technically hard to do. With fly.io this functionality is baked right in, which is why it's such a good fit for a service like DNS.
+A good authoritative DNS server responds quickly to requests (i.e. has low latency). For global services, latency is primarily a function of distance between client and server. Achieving global low-latency means 1) having servers physically close to clients all around the world and 2) setting up complex infrastructure like anycast [anycast](https://fly.io/docs/reference/architecture/#bgp-anycast) which allows physical servers all around the world to share the same IP address. This is both expensive and technically hard to do. With fly.io this functionality is baked right in, which is why it's such a good fit for a service like DNS.
 
 ## Overview
 
-TODO: brief overview of what we're going to configure?
+In this guide, we will configure a DNS service, run the service on fly.io, and configure the domain registrar so that the DNS service that we have configured is used to obtain DNS records for our domain.
 
-We will go through configuration for:
+DNS was designed with redundancy in mind, so we must provide two nameservers. We will use the names `ns1.example.com` and `ns2.example.com` (you're free to call them what you like). In order to be reachable on the internet, these nameservers will also need public IP addresses.
 
-1) Fly.io app
+Due to the order of the dependencies, we will go through the configuration in the following order:
+
+1) Fly.io app and public IPs
 
 2) Your domain registrar
 
@@ -30,21 +32,41 @@ We will go through configuration for:
    
 5) Global distribution
 
-DNS was designed with redundancy in mind, and as such it's a requirement to provide two nameservers. You are free to choose the names that you give your nameservers. We will use the names `ns1.example.com` and `ns2.example.com`.
-
 ## Fly.io
 
-We will configure one app to provide our DNS service which we call `fly-coredns` for this example.
+We will configure one app to provide our DNS service which we call `fly-coredns` for this example. We assume that you have already created an account with fly.io and have `flyctl` installed locally. If you have not done this yet, please refer to the [Hands On with Fly](https://fly.io/docs/hands-on/start/) documentation.
 
-TODO: this section with `flyctl launch` doesn't work as I thought it would.
-
-With the following command, we can create and register the app with fly.io's platform based on the `fly.toml` configuration file in this directory:
+We will get started with the `flyctl init` command, which will create and register our app on the fly.io platform. Additionally, it will generate a `fly.toml` configuration file which tells fly how this app should be deployed. During the init process, ensure that you select `Dockerfile` for the builder, and `53` for the internal port:
 
 ```
-flyctl launch
+> fly init fly-coredns-1
+
+Selected App Name: fly-coredns-1
+
+Automatically selected personal organization: <our organization>
+
+? Select builder: Dockerfile
+    (Do not set a builder and use the existing Dockerfile)
+? Select Internal Port: 53
+New app created
+  Name         = fly-coredns-1
+  Organization = personal
+  Version      = 0
+  Status       =
+  Hostname     = <empty>
+
+App will initially deploy to ewr (Secaucus, NJ (US)) region
+
+Wrote config file fly.toml
 ```
 
-Our `fly.toml` config looks as follows:
+The generated `fly.toml` config contains a number of entries which we do not need. We will need to make the following changes:
+
+- In the `services` stanza, change `protocol` from `"tcp"` to `"udp"`
+- Ensure that only one `services.ports` entry is present, with no `handlers` entry, and port 53
+- We can optionally remove the stanzas for `services.concurrency` and `services.tcp_checks` as they are not needed
+
+In the end, our minimal `fly.toml` config should look as follows:
 
 ```
 app = "fly-coredns"
@@ -62,13 +84,7 @@ kill_timeout = 5
 
 This defines the name of our app, and configures the mapping of the external UDP port 53 to the internal port 53.
 
-Next we will need our two IP addresses. By running the following command twice, we will allocate two ipv4 addresses:
-
-```
-flyctl ips allocate-v4
-```
-
-Example:
+Next we will need our two IP addresses. We can allocate an ipv4 address with the `flyctl ips allocate-v4` command. We will run it twice to allocate two addresses:
 
 ```
 > flyctl ips allocate-v4
@@ -88,18 +104,18 @@ For now, we have configured all we can with fly. Now we will move on to configur
 
 ## Domain registrar
 
-You will need to configure two parameters with your domain registrar:
+We will need to configure two parameters with our domain registrar:
 1) The nameservers 
 2) Glue records which provide a binding from nameservers to IP
 
 ### Nameservers
-The registrar should provide a configuration field for the nameservers which we have defined: `ns1.example.com` and `ns2.example.com`. Configure those now.
+The registrar should provide a configuration field for the nameservers which we have defined: `ns1.example.com` and `ns2.example.com`. We will configure that now.
 
 ### Glue records
 
 You may have noticed that if `ns1.example.com` is supposed to serve name-to-IP mappings for `example.com`, and `ns1.example.com` is itself part of `example.com`, how should a client find the IP of `ns1.example.com`? The answer is "glue records", which provide an explicit name-to-IP mapping for your nameservers. These are configured with your registrar and allow the circular dependency to be broken.
 
-The registrar should provide you with a way to configure this mapping. You should configure the hostname and IP pair for each of your nameservers as follows:
+The registrar should provide a way to configure this mapping. We will configure the hostname and IP pair for each of the nameservers as follows:
 
 ```
 hostname         IP
@@ -123,7 +139,7 @@ example.com {
 
 This tells CoreDNS that we will serve the domain (also called zone) `example.com` from the file `db.example.com`, and that we want CoreDNS to log DNS requests for this zone.
 
-The second file is the zone file for the `example.com` zone:
+The second file is the zone file for the `example.com` zone, which looks as follows:
 
 ```
 $ORIGIN example.com.
@@ -142,11 +158,11 @@ ns1	IN	A	213.188.208.61
 ns2	IN	A	213.188.209.159
 ```
 
-This is a bare-bones zone file which simply configures the start of authority (SOA) for the zone, and nameserver (NS) and associated address (A) records for the zone, which we have configured with the IPs that we generated above. 
+The DNS zone file format is a little cryptic, and we won't go into the exact details of what all of the pieces do. This example is a bare-bones zone file which simply configures the start of authority (SOA) for the zone, and nameserver (NS) and associated address (A) records for the zone, which we have configured with the IPs that we generated above.
 
 ## Fly.io deployment
 
-As previousy mentioned, we will be deploying our application with a Dockerfile. Let's quickly put together a Dockerfile which gets our DNS server running:
+We previously told fly that we would be deploying our application with a Dockerfile. Let's quickly put together a Dockerfile which gets our DNS server running, thanks to smart defaults in the `coredns/coredns` docker image, this is quite short:
 
 ```
 FROM coredns/coredns:latest
@@ -155,15 +171,11 @@ COPY Corefile /
 COPY db.example.com /
 ```
 
-With the Dockerfile, can deploy our app to fly:
+Now that we have a Dockerfile, we are ready to deploy our app to fly with the `flyctl deploy` command:
 
 ```
-flyctl deploy
-```
+> flyctl deploy
 
-And see the following output:
-
-```
 Deploying fly-coredns
 ==> Validating app configuration
 --> Validating app configuration done
@@ -201,15 +213,11 @@ You can detach the terminal anytime without stopping the deployment
 Monitoring Deployment
 ```
 
-Let's see if it's working. We can run the following in a separate console window to see the app logs:
+Let's see if the app is working. With `flyctl logs` we can tail the logs from the running application. We will run it in a separate console window so that we can interact with our app and see the output:
 
 ```
-flyctl logs --app fly-coredns
-```
+> flyctl logs --app fly-coredns
 
-We see the following output, which indicates that the app is running and ready to answer DNS requests:
-
-```
 2021-05-23T20:21:02.284133255Z runner[ff673359] ewr [info] Starting instance
 2021-05-23T20:21:02.311505446Z runner[ff673359] ewr [info] Configuring virtual machine
 2021-05-23T20:21:02.312505898Z runner[ff673359] ewr [info] Pulling container image
@@ -225,15 +233,11 @@ We see the following output, which indicates that the app is running and ready t
 2021-05-23T20:21:04.563633111Z app[ff673359] ewr [info] linux/amd64, go1.16, 4293992
 ```
 
-Now we'll directly query the DNS server itself:
+Now we'll use `dig` to make a query directly to the DNS server that we have configured:
 
 ```
-dig @213.188.208.61 ns1.example.com
-```
+> dig @213.188.208.61 ns1.example.com
 
-We see the following output, indicating that our DNS server is correctly serving the DNS records we've configured:
-
-```
 ; <<>> DiG 9.10.6 <<>> @213.188.208.61 ns1.example.com
 ; (1 server found)
 ;; global options: +cmd
@@ -260,7 +264,9 @@ example.com.		86400	IN	NS	ns2.example.com.
 ;; MSG SIZE  rcvd: 155
 ```
 
-We also see the following entry in the logs, indicating that our fly DNS service served the request:
+The output indicates that our DNS server is correctly serving the DNS records we've configured. Success!
+
+In our logging window, we also see the following entry, indicating that our fly DNS service served the request:
 
 ```
 2021-05-23T20:22:10.078954676Z app[ff673359] ewr [info] [INFO] 212.51.143.89:60891 - 48514 "A IN ns1.example.com. udp 44 false 4096" NOERROR qr,aa,rd 144 0.000191369s
@@ -291,9 +297,9 @@ ns1.example.com.		9466	IN	A	213.188.208.61
 ;; MSG SIZE  rcvd: 58
 ```
 
-You may be wondering: "what about those glue records, how can we distinguish between the glue record response and the response from `ns1.example.com`?". This is a valid question. The first indicator is that we see the A record in the `ANSWER SECTION` of the response.
+You may be wondering: "what about those glue records, how can we distinguish between the glue record response and the response from `ns1.example.com`?". This is a valid question. The first indicator is that we see the A record in the `ANSWER SECTION` of the response. This answer is an authoritative answer from our DNS server.
 
-To see the difference, let's obtain the glue record by directly asking the `.com.` nameserver for its entry for `ns1.example.com`. First, we will determine the nameserver for the `.com` TLD with `dig NS .com.`:
+To see the difference to the glue records, let's take a look at the glue record. To get the glue record, we will directly ask the `.com.` nameserver for its entry for `ns1.example.com`. First, we will determine the nameserver for the `.com` TLD with `dig NS com.`:
 
 ```
 > dig NS com.
@@ -325,7 +331,7 @@ com.			167343	IN	NS	l.gtld-servers.net.
 com.			167343	IN	NS	m.gtld-servers.net.
 ```
 
-And now, let's directly ask the first .com nameserver for its entry for `example.com.` with `dig @a.gtld-servers.net. NS example.com.`:
+We see that there are a handful of nameservers to choose from. Let's directly ask the first .com nameserver for its entry for `example.com.` with `dig @a.gtld-servers.net. NS example.com.`:
 
 ```
 > dig NS @a.gtld-servers.net. example.com.
@@ -357,11 +363,11 @@ ns2.example.com.		3600	IN	A	213.188.209.159
 ;; MSG SIZE  rcvd: 287
 ```
 
-The name-to-IP mapping associated with the glue record is returned in the `ADDITIONAL SECTION` by the TLD nameserver, these are not authoritative answers which the nameserver is providing, but additional information.
+The name-to-IP mappings (address or A records) associated with the glue record are returned in the `ADDITIONAL SECTION` by the TLD nameserver, these are not authoritative answers which the nameserver is providing, but additional information. These are the glue records.
 
 ## Global distribution
 
-You may have noticed that when we ran `flyctl launch`, we saw the following output [TODO: did we really? verify?]: `App will initially deploy to ewr (Secaucus, NJ (US)) region`. While this is nice, what about the globally-distributedness that we were promised? Let's make our app distributed and run all around the world.
+You may have noticed that when we ran `flyctl init`, we saw the following output: `App will initially deploy to ewr (Secaucus, NJ (US)) region`. So it looks like our app is only running in one place in the world. What about the globally-distributedness that we were promised? Let's make our app distributed and run all around the world.
 
 With `flyctl platform regions` we can get an inventory of the available locations that our could run app in:
 
@@ -443,4 +449,4 @@ b2df948f 5       fra(B) run     running               0        6m24s ago
 
 ## Conclusion
 
-We've seen how to quickly stand up a DNS service based on fly.io, including registrar configuration, and how make the service scale globally with one command. As a next step you would probably want to configure futher A records for the services that you want to host on your domain. Perhaps you need globally-distributed static html [server ](https://fly.io/docs/getting-started/static/)? Otherwise you might want to activate the [prometheus plugin](https://coredns.io/plugins/metrics/) for CoreDNS and scrape the metrics using fly's built-in metrics [support](https://fly.io/docs/reference/metrics/#welcome-message).
+We've seen how to quickly stand up a DNS service based on fly.io, including registrar configuration, and how make the service scale globally. As a next step you might want to configure futher A records for the services that you will host on your domain. Perhaps you need globally-distributed static html [server](https://fly.io/docs/getting-started/static/)? Otherwise you might want to activate the [prometheus plugin](https://coredns.io/plugins/metrics/) for CoreDNS and scrape the metrics using fly's built-in metrics [support](https://fly.io/docs/reference/metrics/#welcome-message).
