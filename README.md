@@ -12,7 +12,7 @@ The Domain Name System (DNS) is a distributed system of servers which store mapp
 
 ### Why fly.io?
 
-A good authoritative DNS server responds quickly to requests (i.e. has low latency). For global services, latency is primarily a function of distance between client and server. Achieving global low-latency means 1) having servers physically close to clients all around the world and 2) setting up complex infrastructure like anycast [anycast](https://fly.io/docs/reference/architecture/#bgp-anycast) which allows physical servers all around the world to share the same IP address. This is both expensive and technically hard to do. With fly.io this functionality is baked right in, which is why it's such a good fit for a service like DNS.
+A good authoritative DNS server responds quickly to requests (i.e. has low latency). For global services, latency is primarily a function of distance between client and server. Achieving global low-latency means 1) having servers physically close to clients all around the world and 2) setting up complex infrastructure like [anycast](https://fly.io/docs/reference/architecture/#bgp-anycast) which allows physical servers all around the world to share the same IP address. This is both expensive and technically hard to do. With fly.io this functionality is baked right in, which is why it's such a good fit for a service like DNS.
 
 ## Overview
 
@@ -126,7 +126,7 @@ ns2.example.com  213.188.209.159
 
 ## CoreDNS
 
-While CoreDNS offers a number of methods to configure the DNS records that it will server, we will use the simplest approach: a "traditional" DNS [zone file](https://en.wikipedia.org/wiki/Zone_file). We will require two configuration files: the first is the `Corefile`, a config for CoreDNS itself, the second is the DNS zone file.
+While CoreDNS offers a number of methods to configure the DNS records that it will serve, we will use the simplest approach: a "traditional" DNS [zone file](https://en.wikipedia.org/wiki/Zone_file). We will require two configuration files: the first is the `Corefile`, a config for CoreDNS itself, the second is the DNS zone file.
 
 The `Corefile` contains the following entry:
 
@@ -139,7 +139,7 @@ example.com {
 
 This tells CoreDNS that we will serve the domain (also called zone) `example.com` from the file `db.example.com`, and that we want CoreDNS to log DNS requests for this zone.
 
-The second file is the zone file for the `example.com` zone, which looks as follows:
+The second file is the zone file for the `example.com` zone, it is named `db.example.com` and looks as follows:
 
 ```
 $ORIGIN example.com.
